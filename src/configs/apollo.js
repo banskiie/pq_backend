@@ -7,7 +7,7 @@ import { schema } from "../graphql/schema.js"
 
 
 
-export const createApolloServer = (httpServer) => {
+export const createApolloServer = (httpServer, isAllowedOrigin = () => true) => {
   httpServer.on("listening", () => {
     console.log("📖 Apollo Server is ready...")
   })
@@ -18,10 +18,15 @@ export const createApolloServer = (httpServer) => {
     path: "/subscriptions",
   })
 
-  const serverCleanup = useServer({ 
+  const serverCleanup = useServer({
     schema,
     keepAlive: 10000, // Send ping every 10 seconds to detect stale connections
     onConnect: (ctx) => {
+      const origin = ctx?.extra?.request?.headers?.origin
+      if (!isAllowedOrigin(origin)) {
+        console.warn('Blocked WebSocket origin:', origin)
+        return false
+      }
       console.log('Client connected to WebSocket');
       return true;
     },

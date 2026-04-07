@@ -36,31 +36,59 @@ const httpServer = http.createServer(app)
 const PORT = process.env.PORT || 4000
 const host = process.env.IP_ADDRESS || "192.168.10.99"
 const publicHost = process.env.IP_ADDRESS || "localhost"
-const frontendOrigin = process.env.FRONTEND_ORIGIN || `http://${publicHost}:5173`
+const frontendOrigin = process.env.FRONTEND_ORIGIN || `http://${publicHost}:3000`
 const configuredOrigins = frontendOrigin
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean)
 const localNetworkOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/
+const vercelOriginPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/
+const ngrokOriginPattern = /^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/
 
-// const isAllowedOrigin = (origin) => {
-//   if (!origin) {
-//     // Allow non-browser clients (curl, server-to-server requests)
-//     return true
-//   }
+const isAllowedOrigin = (origin) => {
+  if (!origin) {
+    // Allow non-browser clients (curl, server-to-server requests)
+    return true
+  }
 
-//   if (configuredOrigins.includes(origin)) {
-//     return true
-//   }
+  if (configuredOrigins.includes(origin)) {
+    return true
+  }
 
-//   return localNetworkOriginPattern.test(origin)
-// }
+  if (localNetworkOriginPattern.test(origin)) {
+    return true
+  }
+
+  if (vercelOriginPattern.test(origin) || ngrokOriginPattern.test(origin)) {
+    return true
+  }
+
+  return false
+}
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true)
+      return
+    }
+
+    callback(new Error(`Origin not allowed by CORS: ${origin}`))
+  },
+  credentials: true,
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "apollo-require-preflight", "x-apollo-operation-name"],
+  optionsSuccessStatus: 204,
+}
 
 const start = async () => {
   await connectDB()
 
-const server = createApolloServer(httpServer)
+const server = createApolloServer(httpServer, isAllowedOrigin)
   await server.start()
+
+  app.use(cors(corsOptions))
+  app.options("*", cors(corsOptions))
 
   // REST API routes
   app.use('/api/players', bulkPlayersRouter)
@@ -68,10 +96,6 @@ const server = createApolloServer(httpServer)
   // GraphQL route
   app.use(
     "/graphql",
-     cors({
-      origin: true,
-      credentials: true,
-    }),
     express.json(),
     express.urlencoded({ extended: false }),
     cookieParser(),
